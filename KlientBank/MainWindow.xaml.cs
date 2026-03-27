@@ -226,7 +226,7 @@ namespace KlientBank
                 RenderResponse("PING", resp);
 
                 SetConnected(true);
-                ShowSuccessToast("Подключение успешно");
+                ShowSuccessToast("Подключено");
             }
             catch (Exception ex)
             {
