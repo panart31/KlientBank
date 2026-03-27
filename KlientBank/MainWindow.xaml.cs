@@ -125,8 +125,57 @@ namespace KlientBank
             return table.Rows.Count > 0;
         }
 
-        private void RenderResponse(string response)
+        private static bool LooksLikeEmptyPipeTable(string response)
         {
+            var lines = response
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Trim())
+                .ToList();
+
+            // Частый формат пустого ответа от сервера:
+            // | col1 | col2 |
+            // +----------------
+            // (без строк данных)
+            int pipeRows = lines.Count(l => l.StartsWith("|"));
+            return pipeRows == 1;
+        }
+
+        private static bool TryGetNoDataMessage(string request, string response, out string message)
+        {
+            message = string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(response) && response.StartsWith("ERROR|", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            bool noData = string.IsNullOrWhiteSpace(response) || LooksLikeEmptyPipeTable(response);
+            if (!noData)
+                return false;
+
+            string command = request.Split('|')[0];
+            message = command switch
+            {
+                "GET_ALL_CLIENTS" => "Нет зарегистрированных клиентов",
+                "GET_ACCOUNTS" => "Нет открытых счетов",
+                "GET_CARDS" => "Нет зарегистрированных карт",
+                "GET_TRANSACTIONS" => "Нет операций",
+                "FIND_CLIENT" => "Клиент не найден",
+                "GET_CLIENT" => "Клиент не найден",
+                _ => "Нет данных"
+            };
+
+            return true;
+        }
+
+        private void RenderResponse(string request, string response)
+        {
+            if (TryGetNoDataMessage(request, response, out var noDataMessage))
+            {
+                ShowTextOutput();
+                AppendOutput("Ответ:");
+                AppendOutput(noDataMessage);
+                return;
+            }
+
             if (TryParsePipeTable(response, out var table))
             {
                 ShowTableOutput(table);
@@ -174,7 +223,7 @@ namespace KlientBank
                 SetLoading(true);
                 string resp = await _client.SendRequestAsync("PING");
 
-                RenderResponse(resp);
+                RenderResponse("PING", resp);
 
                 SetConnected(true);
                 ShowSuccessToast("Подключение успешно");
@@ -243,7 +292,7 @@ namespace KlientBank
                 SetLoading(true);
                 string resp = await _client.SendRequestAsync(request);
 
-                RenderResponse(resp);
+                RenderResponse(request, resp);
             }
             catch (Exception ex)
             {
